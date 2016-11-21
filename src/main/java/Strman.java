@@ -4,8 +4,12 @@ import java.security.cert.PKIXRevocationChecker.Option;
 import java.util.Arrays;
 import java.util.Base64;
 import java.util.Collections;
+import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Random;
+import java.util.Set;
 import java.util.StringJoiner;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
@@ -15,6 +19,10 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import org.omg.CosNaming.NamingContextExtPackage.StringNameHelper;
+
+import com.sun.java_cup.internal.runtime.virtual_parse_stack;
+import com.sun.org.apache.xerces.internal.impl.xs.opti.SchemaParsingConfig;
+import com.sun.xml.internal.bind.v2.runtime.unmarshaller.XsiNilLoader.Array;
 
 public abstract class Strman {
 	private static final Predicate<String> NULL_STRING_PREDICATE = str->str == null;
@@ -571,10 +579,23 @@ public abstract class Strman {
     	return Arrays.stream(strings).filter(str -> str!= null && !str.trim().isEmpty()).toArray(String[]::new);
     }
     
+    /**
+     * Returns a new String with the prefix removed,if presnet.This is case sensitive.
+     * @param value		The input String
+     * @param prefix	String to remove on left
+     * @return	The String without prefix
+     */
     public static String removeLeft(final String value,final String prefix) {
-    	
+    	return removeLeft(value, prefix,true);
     }
     
+    /**
+     * Returns a new String with the prefix removed,if presnet.
+     * @param value		The input String
+     * @param prefix	String to remove on left
+     * @param caseSensitive	ensure case sensitivity
+     * @return	The String without prefix
+     */
     public static String removeLeft(final String value, final String prefix, final boolean caseSensitive){
     	validate(value, NULL_STRING_PREDICATE, NULL_STRING_MSG_SUPPLIER);
     	validate(value, NULL_STRING_PREDICATE, NULL_STRING_MSG_SUPPLIER);
@@ -583,6 +604,7 @@ public abstract class Strman {
 		}
     	return value.toLowerCase().startsWith(prefix.toLowerCase())?value.substring(prefix.length()):value;
     }
+    
     /**
      * Returns a repeated string given a multiplier
      * @param value		The input String
@@ -593,8 +615,262 @@ public abstract class Strman {
     	validate(value, NULL_STRING_PREDICATE, NULL_STRING_MSG_SUPPLIER);
     	return Stream.generate(() -> value).limit(multiplier).collect(Collectors.joining());
     }
+    /**
+     * Replace all occurrences of 'search' value to 'newValue'.Uses String replace method.
+     * @param value	The input 
+     * @param search	The String to Search
+     * @param newValue	The String to replace
+     * @param caseSensitive	wether search should be case sensitive or not
+     * @return	String replaced with 'newValue'
+     */
+    public static String replace(final String value, final String search,final String newValue,final boolean caseSensitive) {
+    	validate(value, NULL_STRING_PREDICATE, NULL_STRING_MSG_SUPPLIER);
+    	validate(search, NULL_STRING_PREDICATE, NULL_STRING_MSG_SUPPLIER);
+    	if (caseSensitive) {
+			return value.replace(search, newValue);
+		}
+    	return Pattern.compile(search,Pattern.CASE_INSENSITIVE)
+    			.matcher(value)
+    			.replaceAll(Matcher.quoteReplacement(newValue));
+    }
     
- 
+    /**
+     * Reverse the input String
+     * @param value	The input String
+     * @return	Reversed String
+     */
+    public static String reverse(final String value) {
+    	validate(value, NULL_STRING_PREDICATE, NULL_STRING_MSG_SUPPLIER);
+    	return new StringBuilder(value).reverse().toString();
+    }
+    
+    /**
+     * Returns a new string of a given length such that the ending of the string is padded.
+     * @param value	The input String
+     * @param pad	Character to repeat	
+     * @param length	Max length of String
+     * @return	Right padded String
+     */
+    public static String rightPad(final String value,String pad,final int length) {
+    	validate(value, NULL_STRING_PREDICATE, NULL_STRING_MSG_SUPPLIER);
+    	if (value.length() > length) {
+			return value;
+		}
+    	return append(value, repeat(pad, length - value.length()));
+    }
+    
+    /**
+     * Remove all spaces on right
+     * @param value	The String
+     * @return	String without right boarders spaces.
+     */
+    public static String rightTrim(final String value){
+    	validate(value, NULL_STRING_PREDICATE, NULL_STRING_MSG_SUPPLIER);
+    	return value.replaceAll("\\s+$", "");
+    }
+    /**
+     * Truncate the string securely,not cutting a word in half.It always returns the last full word
+     * @param value	The input string
+     * @param length	Max size of the truncated string
+     * @param filler	String that will be added to the end of the return string. Examplee: '...'
+     * @return	The truncated String
+     */
+    public static String safeTruncate(final String value,final int length,final String filler) {
+    	validate(value, NULL_STRING_PREDICATE, NULL_STRING_MSG_SUPPLIER);
+    	if (length == 0) {
+			return "";
+		}
+    	if (length >= value.length()) {
+			return value;
+		}
+    	
+    	String[] words = words(value);
+    	StringJoiner result = new StringJoiner(" ");
+    	int spaceCount = 0;
+    	for(String word:words){
+    		if (result.length() + word.length() + filler.length() + spaceCount > length) {
+				break;
+			}else{
+				result.add(word);
+				spaceCount++;
+			}
+    	}
+    	return append(result.toString(), filler);
+    }
+    
+    /**
+     * Alias to String split function.Defined only for completeness.
+     * @param value	The input String
+     * @param regex	The delimiting regular expression
+     * @return	String Array
+     */
+    public static String[] split(final String value,final String regex) {
+    	validate(value, NULL_STRING_PREDICATE, NULL_STRING_MSG_SUPPLIER);
+    	return value.split(regex);
+    }
+    /**
+     * Split a string to words
+     * @param value	The input string
+     * @return	words array
+     */
+    public static String[] words(final String value){
+    	validate(value, NULL_STRING_PREDICATE, NULL_STRING_MSG_SUPPLIER);
+    	return value.split("\\W+");
+    }
+    /**
+     * Truncate the unsecured form string,cutting the independent string of required position.
+     * @param value		Value will be truncated unsecurely
+     * @param length	Size of the returned string.
+     * @param filler	Value that will be added to the end of the return string. Example: '...'
+     * @return	String truncated unsafely
+     */
+    public static String truncate(final String value, final int length,final String filler){
+    	validate(value, NULL_STRING_PREDICATE, NULL_STRING_MSG_SUPPLIER);
+    	if (length == 0) {
+			return "";
+		}
+    	if (length >= value.length()) {
+			return value;
+		}
+    	
+    	return append(value.substring(0,length-filler.length()), filler);
+    }
+    /**
+     * Converts all HTML entities to applicable characters
+     * @param encodedHtml
+     * @return
+     */
+    public static String htmlDecode(final String encodedHtml){
+    	validate(encodedHtml, NULL_STRING_PREDICATE, NULL_STRING_MSG_SUPPLIER);
+    	String[] entities = encodedHtml.split("$\\W+;");
+    	return Arrays.stream(entities).map(e -> HtmlEntities.decodedEntities.get(e)).collect(Collectors.joining());
+    }
+    /**
+     * Convert all applicable characters to HTML entities
+     * @param html	The HTML to encode
+     * @return	The encoded data
+     */
+    public static String htmlEncode(final String html) {
+    	validate(html, NULL_STRING_PREDICATE, NULL_STRING_MSG_SUPPLIER);
+    	return html
+    			.chars().
+    			mapToObj(c -> "\\u" + String.format("%04x", c).toUpperCase())
+    			.map(HtmlEntities.encodedEntities::get)
+    			.collect(Collectors.joining());
+    }
+    
+    /**
+     * It returns a string with its characters in random order.
+     * @param value
+     * @return
+     */
+    public static String shuffle(final String value){
+    	validate(value, NULL_STRING_PREDICATE, NULL_STRING_MSG_SUPPLIER);
+    	String[] chars = chars(value);
+    	Random random = new Random();
+    	for (int i = 0; i < chars.length; i++) {
+			int r = random.nextInt(chars.length);
+			String tmp = chars[i];
+			chars[i] = chars[r];
+			chars[r] = tmp;
+		}
+    	return Arrays.stream(chars).collect(Collectors.joining());
+    }
+    
+    /**
+     * Alias of substring method
+     * @param value	The input String
+     * @param begin	Start of slice
+     * @param end	End of slice
+     * @return	The String sliced!
+     */
+    public static String slice(final String value,int begin,int end){
+    	validate(value, NULL_STRING_PREDICATE,NULL_STRING_MSG_SUPPLIER);
+    	return value.substring(begin,end);
+    }
+    
+    /**
+     * Convert a String to a slug
+     * @param value	The value to slugify
+     * @return	The slugified value
+     */
+    public static String slugify(final String value){
+    	validate(value, NULL_STRING_PREDICATE, NULL_STRING_MSG_SUPPLIER);
+    	String transliterated = transliterate(value);
+    	return Arrays.stream(words(transliterated.replace("&", "-and-"))).collect(Collectors.joining("-"));
+    }
+    
+    /**
+     * Remove all invalid characters
+     * @param value		The input String
+     * @return	String without non valid characters
+     */
+    public static String transliterate(final String value){
+    	validate(value, NULL_STRING_PREDICATE, NULL_STRING_MSG_SUPPLIER);
+    	String result = value;
+    	Set<Map.Entry<String, List<String>>> entries = Ascii.ascii.entrySet();
+    	for(Map.Entry<String, List<String>> entry : entries){
+    		for (String ch:entry.getValue()){
+    			result = result.replace(ch, entry.getKey());
+    		}
+    	}
+    	return result;
+    }
+    
+    public static String surround(final String value,final String prefix,final String suffix) {
+    	validate(value, NULL_STRING_PREDICATE, NULL_STRING_MSG_SUPPLIER);
+    	String _prefix = Optional.ofNullable(prefix).orElse("");
+    	return append(_prefix, value,Optional.ofNullable(suffix).orElse(_prefix));
+    }
+    
+    /**
+     * Transform to camelCase
+     * @param value	The input String
+     * @return	String in camelCase
+     */
+    public static String toCamelCase(final String value) {
+    	validate(value, NULL_STRING_PREDICATE, NULL_STRING_MSG_SUPPLIER);
+    	String str = toStudlyCase(value);
+    	return str.substring(0, 1).toLowerCase() + str.substring(1);
+    }
+    
+    /**
+     * Transform to StudlyCaps
+     * @param value	The input String
+     * @return String in StudlyCaps
+     */
+    
+    public static String toStudlyCase(final String value){
+    	validate(value, NULL_STRING_PREDICATE, NULL_STRING_MSG_SUPPLIER);
+    	String[] words = collapseWhitespace(value.trim()).split("\\s*(_|-|\\s)\\s*");
+    	return Arrays.stream(words)
+    			.filter(w -> !w.trim().isEmpty())
+    			.map(Strman::upperFirst)
+    			.collect(Collectors.joining());
+    }
+    /**
+     * Return tail of the String
+     * @param value	The input String
+     * @return	String tail
+     */
+    public static Optional<String> tail(final String value) {
+    	return Optional.ofNullable(value).filter(v->!v.isEmpty()).map(v->last(v, v.length()-1));
+    }
+    
+    /**
+     * Decamelize String
+     * @param value	The input String
+     * @param chr	string to use
+     * @return	String decamelized.
+     */
+    public static String toDecamelize(final String value, final String chr) {
+    	String camelCasedString = toCamelCase(value);
+    	String[] words = camelCasedString.split("(?=\\p{Upper})");
+    	return Arrays.stream(words)
+    			.map(String::toLowerCase)
+    			.collect(Collectors.joining(Optional.ofNullable(chr).orElse(" ")));
+    }
+    
     /**
      * Ensures that the value ends with suffix.If it doesn't,it's appended.
      * @param value	The input String
@@ -619,8 +895,169 @@ public abstract class Strman {
 	
 	public static String encode(final String value, final int digits,final int radix){
 		validate(value, NULL_STRING_PREDICATE, NULL_STRING_MSG_SUPPLIER);
-		//return value.chars().mapToObj(ch -> leftPad())
+		return value.chars().mapToObj(ch -> leftPad(Integer.toString(ch,radix),"0",digits)).collect(Collectors.joining());
 	}
+	
+	/**
+	 * Joined concatenates all the elements of the strings array into a single string.The separator string is between elements in the resulting string.
+	 * @param strings	The input array to concatenate
+	 * @param separator	The separtor to use
+	 * @return	Concatenated String
+	 * @throws IllegalArgumentException
+	 */
+	public static String join(final String[] strings,final String separator) throws IllegalArgumentException{
+		if (strings == null) {
+			throw new IllegalArgumentException("Input array 'strings' can't be null");
+		}
+		
+		if (separator == null) {
+			throw new IllegalArgumentException("separtor can'be null");
+		}
+		
+		StringJoiner joiner = new StringJoiner(separator);
+		for(String el : strings){
+			joiner.add(el);
+		}
+		return joiner.toString();
+	}
+	/**
+	 * Converts the first character of string to upper case and the remaining to lower case.
+	 * @param input	The string to capitalize
+	 * @return The capitalized string
+	 * @throws IllegalArgumentException
+	 */
+	public static String capitalize(final String input) throws IllegalArgumentException{
+		if (input == null) {
+			throw new IllegalArgumentException("input can't be null");
+		}
+		
+		if (input.length() == 0) {
+			return "";
+		}
+		
+		return head(input)
+				.map(String::toUpperCase)
+				.map(h -> 
+						tail(input).map(t -> h + t.toLowerCase()).orElse(h)
+						).get();
+	}
+	/**
+	 * Converts the first character of string to lower case.
+	 * @param input
+	 * @return
+	 * @throws IllegalArgumentException
+	 */
+	public static String lowerFirst(final String input) throws IllegalArgumentException{
+		if (input == null) {
+			throw new IllegalArgumentException("input can't be null");
+		}
+		if (input.length() == 0) {
+			return "";
+		}
+		
+		return head(input)
+				.map(String::toLowerCase)
+				.map(h -> tail(input).map(t -> h + t).orElse(h))
+				.get();
+	}
+	
+	/**
+	 * Verfifies whether String is encloser by encloser
+	 * @param input	The input String
+	 * @param encloser	String which encloses input String
+	 * @return		true if enclosed flase otherwise
+	 */
+	public static boolean isEnclosedBetween(final String input, final String encloser){
+		return isEnclosedBetween(input, encloser,encloser);
+	}
+	
+	/**
+	 * Validates whether input is enclosed between leftEncloser and rightEncloser
+	 * @param input		The input String
+	 * @param leftEncloser	String which encloses input String at left start
+	 * @param rightEncloser	String which encloses input String at right end
+	 * @return	true if enclosed false otherwise
+	 */
+	public static boolean isEnclosedBetween(final String input,final String leftEncloser,String rightEncloser){
+		if (input == null) {
+			throw new IllegalArgumentException("input can't be null");
+		}
+		
+		if (leftEncloser == null) {
+			throw new IllegalArgumentException("leftEncloser can't be null");
+		}
+		
+		if (rightEncloser == null) {
+			throw new IllegalArgumentException("rightEncloser can't be null");
+		}
+		
+		return input.startsWith(leftEncloser) && input.endsWith(rightEncloser);
+	}
+	
+	/**
+	 * Converts the first character of string to upper case.
+	 * @param input		The String to convert.
+	 * @return	Returns the converted string.
+	 */
+	public static String upperFirst(String input){
+		if (input == null) {
+			throw new IllegalArgumentException("input can't be null");
+		}
+		return head(input).map(String::toUpperCase)
+				.map(h -> tail(input).map(t -> h + t).orElse(h))
+				.get();
+	}
+	/**
+	 * Removes leading whitespace from string.
+	 * @param input		The string to trim.
+	 * @return	Returns the trimmed string.
+	 */
+	public static Optional<String> trimStart(final String input) {
+		return Optional.ofNullable(input).filter(v -> !v.isEmpty()).map(Strman::leftTrim);
+	}
+	
+	/**
+	 * Removing leading characters from string.
+	 * @param input	The string to trim.
+	 * @param chars	The characters to trim.
+	 
+	 * @return	Returns the trimmed string.
+	 */
+	public static Optional<String> trimStart(final String input, String... chars) {
+		return Optional.ofNullable(input)
+				.filter(v -> !v.isEmpty())
+				.map(v->{
+					String pattern = String.format("^[%s]+", join(chars, "\\"));
+					return v.replaceAll(pattern, "");
+				});
+	}
+	
+	/**
+	 * Removes trailing whitespace from string.
+	 * @param input		The string to trim.
+	 * @return	Returns the trimmed string.
+	 */
+	public static Optional<String> trimEnd(final String input) {
+		return Optional.ofNullable(input)
+				.filter(v->!v.isEmpty())
+				.map(Strman::rightTrim);
+	}
+	
+	/**
+	 * Removes trailing characters from string.
+	 * @param input		The string to trim.
+	 * @param chars		The characters to trim.
+	 * @return	Returns the trimmed string.
+	 */
+	public static Optional<String> trimEnd(final String input, String... chars) {
+		return Optional.ofNullable(input)
+				.filter(v->!v.isEmpty())
+				.map(v->{
+					String pattern = String.format("[%s]+$", join(chars, "\\"));
+					return v.replaceAll(pattern, "");
+				});
+	}
+	
 	private static void validate(String value, Predicate<String> predicate,final Supplier<String> supplier){
 		if (predicate.test(value)) {
 			throw new IllegalArgumentException(supplier.get());
